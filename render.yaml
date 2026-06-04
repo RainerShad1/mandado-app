@@ -1,0 +1,21 @@
+# Render lee este archivo y configura el servicio solo.
+# Subir a la raíz del repo. En Render: New > Blueprint > elige tu repo.
+services:
+  - type: web
+    name: mandados-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run deploy:start
+    envVars:
+      - key: DATABASE_URL
+        sync: false        # se pega a mano en el panel (secreto)
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: GOOGLE_MAPS_KEY
+        sync: false
+      - key: PORT
+        value: 4000
