@@ -7,10 +7,10 @@ services:
     rootDir: backend
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: npm run deploy:start
+    startCommand: npx prisma db push --accept-data-loss && node dist/main
     envVars:
       - key: DATABASE_URL
-        sync: false        # se pega a mano en el panel (secreto)
+        sync: false
       - key: JWT_SECRET
         sync: false
       - key: FRONTEND_URL
@@ -18,4 +18,4 @@ services:
       - key: GOOGLE_MAPS_KEY
         sync: false
       - key: PORT
-        value: 4000
+        value: "4000"
