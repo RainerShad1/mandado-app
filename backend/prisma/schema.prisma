@@ -1,0 +1,228 @@
+// Prisma schema — Plataforma de Mandados y Delivery
+// Base de datos: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- ENUMS ----------
+enum Role {
+  CLIENT
+  DRIVER
+  ADMIN
+}
+
+enum PricingType {
+  DISTANCE // base + por km
+  PERCENT  // base + % sobre el valor de la compra
+  FIXED    // tarifa fija + comisión
+}
+
+enum OrderStatus {
+  PENDING     // Pendiente
+  REVIEWING   // Revisando
+  APPROVED    // Aprobado
+  ASSIGNED    // Asignado
+  ON_THE_WAY  // En camino
+  SHOPPING    // Comprando
+  DELIVERING  // Entregando
+  COMPLETED   // Completado
+  CANCELLED   // Cancelado
+}
+
+enum DeliveryStatus {
+  PENDING
+  ACCEPTED
+  PICKING_UP
+  DELIVERING
+  DONE
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  PUSH
+  EMAIL
+}
+
+enum NotificationStatus {
+  SENT
+  FAILED
+}
+
+// ---------- MODELOS ----------
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  phone        String   @unique
+  email        String?  @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(CLIENT)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  addresses      Address[]
+  ordersAsClient Order[]        @relation("ClientOrders")
+  deliveries     Delivery[]     @relation("DriverDeliveries")
+  notifications  Notification[]
+
+  @@map("users")
+}
+
+model Address {
+  id          String  @id @default(uuid())
+  userId      String  @map("user_id")
+  label       String
+  fullAddress String  @map("full_address")
+  lat         Float
+  lng         Float
+  isDefault   Boolean @default(false) @map("is_default")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+model Service {
+  id          String      @id @default(uuid())
+  name        String
+  icon        String
+  formSchema  Json        @map("form_schema")
+  pricingType PricingType @map("pricing_type")
+  isActive    Boolean     @default(true) @map("is_active")
+  sortOrder   Int         @default(0) @map("sort_order")
+
+  orders       Order[]
+  pricingRules PricingRule[]
+
+  @@map("services")
+}
+
+model Order {
+  id             String      @id @default(uuid())
+  clientId       String      @map("client_id")
+  serviceId      String      @map("service_id")
+  pickupAddress  Json?       @map("pickup_address")
+  dropoffAddress Json        @map("dropoff_address")
+  details        Json        @default("{}")
+  status         OrderStatus @default(PENDING)
+  isUrgent       Boolean     @default(false) @map("is_urgent")
+  distanceKm     Float       @default(0) @map("distance_km")
+  estimatedPrice Decimal     @default(0) @map("estimated_price") @db.Decimal(10, 2)
+  finalPrice     Decimal?    @map("final_price") @db.Decimal(10, 2)
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  client        User           @relation("ClientOrders", fields: [clientId], references: [id])
+  service       Service        @relation(fields: [serviceId], references: [id])
+  items         OrderItem[]
+  delivery      Delivery?
+  payment       Payment?
+  notifications Notification[]
+
+  @@index([status])
+  @@index([clientId])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id       String   @id @default(uuid())
+  orderId  String   @map("order_id")
+  name     String
+  quantity Int      @default(1)
+  note     String?
+  price    Decimal? @db.Decimal(10, 2)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model Delivery {
+  id          String         @id @default(uuid())
+  orderId     String         @unique @map("order_id")
+  driverId    String         @map("driver_id")
+  acceptedAt  DateTime?      @map("accepted_at")
+  pickedUpAt  DateTime?      @map("picked_up_at")
+  deliveredAt DateTime?      @map("delivered_at")
+  status      DeliveryStatus @default(PENDING)
+
+  order    Order              @relation(fields: [orderId], references: [id])
+  driver   User               @relation("DriverDeliveries", fields: [driverId], references: [id])
+  tracking DeliveryTracking[]
+
+  @@map("deliveries")
+}
+
+model DeliveryTracking {
+  id         String   @id @default(uuid())
+  deliveryId String   @map("delivery_id")
+  lat        Float
+  lng        Float
+  recordedAt DateTime @default(now()) @map("recorded_at")
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId])
+  @@map("delivery_tracking")
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  orderId     String        @unique @map("order_id")
+  amount      Decimal       @db.Decimal(10, 2)
+  method      PaymentMethod @default(CASH)
+  status      PaymentStatus @default(PENDING)
+  evidenceUrl String?       @map("evidence_url")
+  paidAt      DateTime?     @map("paid_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
+}
+
+model Notification {
+  id        String              @id @default(uuid())
+  userId    String              @map("user_id")
+  orderId   String?             @map("order_id")
+  channel   NotificationChannel
+  event     String
+  status    NotificationStatus  @default(SENT)
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@map("notifications")
+}
+
+model PricingRule {
+  id                  String   @id @default(uuid())
+  serviceId           String?  @map("service_id")
+  baseFee             Decimal  @default(100) @map("base_fee") @db.Decimal(10, 2)
+  perKm               Decimal  @default(15) @map("per_km") @db.Decimal(10, 2)
+  nightSurchargePct   Float    @default(0.20) @map("night_surcharge_pct")
+  urgencySurchargePct Float    @default(0.30) @map("urgency_surcharge_pct")
+  weightRule          Json     @default("{}") @map("weight_rule")
+  activeFrom          DateTime @default(now()) @map("active_from")
+
+  service Service? @relation(fields: [serviceId], references: [id])
+
+  @@map("pricing_rules")
+}
